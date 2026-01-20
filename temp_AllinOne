@@ -1,0 +1,177 @@
+import csv
+from datetime import datetime
+from models import MarketDataPoint
+from abc import ABC, abstractmethod
+from typing import List, Callable
+import timeit
+from memory_profiler import memory_usage
+from collections import deque
+
+
+def load_market_data(path: str) -> List[MarketDataPoint]:
+
+    data_points: List[MarketDataPoint] = []
+
+    with open(path, mode="r", newline="", encoding="utf-8") as file:
+        reader = csv.reader(file)
+        next(reader)  # skip header
+
+        for row in reader:
+            timestamp = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+
+            market_datapoint = MarketDataPoint(
+                timestamp=timestamp,
+                symbol=row[1],
+                price=float(row[2])
+            )
+
+            data_points.append(market_datapoint)
+
+    # Ensure ascending time order
+    data_points.sort(key=lambda p: p.timestamp)
+
+    return data_points
+
+
+# Space complexity analysis:
+# We store one MarketDataPoint object per CSV row in the list `data_points`.
+# If the CSV has n rows, the list contains n objects.
+# Therefore, memory usage grows linearly with n.
+# Space complexity: O(n).
+
+
+# ?what did I do? 
+# I'm not using panda.read_csv() because that's for data analysis and here I'm doing system design, I'm building a typed, object-oriented data ingestion pipeline
+# having/using MarketDataPoint means that 1. every rows become a domain object, 2. each oject ahs guaranteed types, 3. I c an attach beahviors and not just data
+
+###2. Strategy Interface & Implementations
+
+#Create an abstract base class:
+class Strategy(ABC): #ABC = Abstract Base Class = this is not meant to be used directly but for defining rules for subclasses
+
+    @abstractmethod
+
+    def generate_signals(self, tick: MarketDataPoint) -> list: #RULE = every subclass MUST implement generate_signals that takes MArketDataPint and return a list
+
+        pass
+
+# Overall, this ABC allows us to compare and profile multiple strategies fairly, because they all run in the same pipeline and implement the same generate_signals interface
+
+
+## Strategy1
+class NaiveMovingAverageStrategy(Strategy):
+    """
+    Fixed window = 10
+    Space: O(n) because we store full history in self.prices
+    Time per tick: O(10) = O(1)
+    Total time over n ticks: O(n)
+    """
+
+    def __init__(self, window_size: int = 10):
+        self.window_size = window_size
+        self.prices: List[float] = []
+
+    def generate_signals(self, tick: MarketDataPoint) -> List[str]:
+        self.prices.append(tick.price)
+
+        if len(self.prices) < self.window_size:
+            return []
+
+        window = self.prices[-self.window_size:]     # size 10
+        avg = sum(window) / self.window_size         # sum 10 values
+
+        if tick.price > avg:
+            return ["BUY"]
+        elif tick.price < avg:
+            return ["SELL"]
+        return []
+
+class WindowedMovingAverageStrategy(Strategy):
+    """
+    Maintains a fixed-size window and updates the average incrementally.
+
+    Time Complexity per tick: O(1)
+    Space Complexity: O(k), where k = window size
+    """
+
+    def __init__(self, window_size: int):
+        self.window_size = window_size
+        self.window = deque(maxlen=window_size)
+        self.running_sum = 0.0
+
+    def generate_signals(self, tick: MarketDataPoint) -> List[str]:
+        if len(self.window) == self.window_size:
+            # Remove the oldest price from the running sum
+            self.running_sum -= self.window[0]
+
+        self.window.append(tick.price)
+        self.running_sum += tick.price
+
+        if len(self.window) < self.window_size:
+            return []
+
+        average_price = self.running_sum / self.window_size
+
+        if tick.price > average_price:
+            return ["BUY"]
+        elif tick.price < average_price:
+            return ["SELL"]
+        return []
+    
+
+def run_strategy(data: List[MarketDataPoint], strategy: Strategy) -> None:
+    for tick in data:
+        strategy.generate_signals(tick)
+
+
+from functools import partial
+
+def measure_time_timeit(
+    data: List[MarketDataPoint],
+    strategy: Strategy
+) -> float:
+    t = timeit.timeit(partial(run_strategy, data, strategy), number=1)
+    return t
+
+
+def measure_peak_memory_mb(
+    data: List[MarketDataPoint],
+    make_strategy: Callable[[], Strategy],
+) -> float:
+    """Return peak memory (MB) during one full run."""
+    def _task():
+        strategy = make_strategy()  # fresh strategy each run
+        for tick in data:
+            strategy.generate_signals(tick)
+
+    samples_mb = memory_usage((_task,), interval=0.01)
+    return max(samples_mb)
+
+
+def main():
+    data = load_market_data("market_data.csv")
+    sizes = [1000, 10000, 100000]
+    naivemovingaveragestrategy = NaiveMovingAverageStrategy()
+    windowedmovingaveragestrategy = WindowedMovingAverageStrategy(window_size=10)
+
+    for n in sizes:
+        subset = data[:n]
+
+        # Runtime (timeit)
+        t_naive = measure_time_timeit(subset, naivemovingaveragestrategy)
+        t_windowed = measure_time_timeit(subset, windowedmovingaveragestrategy)
+
+        # Peak memory (memory_profiler) - usually run once, not repeated
+        m_naive = measure_peak_memory_mb(subset, lambda: NaiveMovingAverageStrategy())
+        m_windowed = measure_peak_memory_mb(subset, lambda: WindowedMovingAverageStrategy(window_size=10))
+
+        print(f"{n} ticks:")
+        print(f"  Naive time:     {t_naive:.6f} s | peak mem: {m_naive:.2f} MB")
+        print(f"  Windowed time:  {t_windowed:.6f} s | peak mem: {m_windowed:.2f} MB")
+        print()
+
+
+if __name__ == "__main__":
+    main()
+
+#Although the naive strategy stores O(n) historical prices, the measured peak memory usage is dominated by the baseline memory of the Python process and measurement overhead. As a result, the observed peak memory does not increase monotonically with n, but remains within a narrow range.

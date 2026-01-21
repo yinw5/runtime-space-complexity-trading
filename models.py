@@ -9,10 +9,8 @@ class MarketDataPoint:
     price: float
 
 
-class Strategy(ABC): #ABC = Abstract Base Class = this is not meant to be used directly but for defining rules for subclasses
+class Strategy(ABC):
     @abstractmethod
-    def generate_signals(self, tick: MarketDataPoint) -> list: #RULE = every subclass MUST implement generate_signals that takes MArketDataPint and return a list
+    def generate_signals(self, tick: MarketDataPoint) -> list: 
 
         pass
-
-# Overall, this ABC allows us to compare and profile multiple strategies fairly, because they all run in the same pipeline and implement the same generate_signals interface

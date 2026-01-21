@@ -2,7 +2,7 @@ from models import MarketDataPoint, Strategy
 from typing import List
 from collections import deque
 
-## Strategy1
+# strategy1
 class NaiveMovingAverageStrategy(Strategy):
     """
     Fixed window = 10
@@ -21,8 +21,8 @@ class NaiveMovingAverageStrategy(Strategy):
         if len(self.prices) < self.window_size:
             return []
 
-        window = self.prices[-self.window_size:]     # size 10
-        avg = sum(window) / self.window_size         # sum 10 values
+        window = self.prices[-self.window_size:]
+        avg = sum(window) / self.window_size 
 
         if tick.price > avg:
             return ["BUY"]
@@ -30,6 +30,7 @@ class NaiveMovingAverageStrategy(Strategy):
             return ["SELL"]
         return []
 
+# strategy2
 class WindowedMovingAverageStrategy(Strategy):
     """
     Maintains a fixed-size window and updates the average incrementally.
@@ -45,7 +46,6 @@ class WindowedMovingAverageStrategy(Strategy):
 
     def generate_signals(self, tick: MarketDataPoint) -> List[str]:
         if len(self.window) == self.window_size:
-            # Remove the oldest price from the running sum
             self.running_sum -= self.window[0]
 
         self.window.append(tick.price)

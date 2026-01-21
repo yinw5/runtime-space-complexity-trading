@@ -3,14 +3,13 @@ from datetime import datetime
 from models import MarketDataPoint
 from typing import List
 
-
 def load_market_data(path: str) -> List[MarketDataPoint]:
 
     data_points: List[MarketDataPoint] = []
 
     with open(path, mode="r", newline="", encoding="utf-8") as file:
         reader = csv.reader(file)
-        next(reader)  # skip header
+        next(reader)
 
         for row in reader:
             timestamp = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
@@ -23,7 +22,6 @@ def load_market_data(path: str) -> List[MarketDataPoint]:
 
             data_points.append(market_datapoint)
 
-    # Ensure ascending time order
     data_points.sort(key=lambda p: p.timestamp)
 
     return data_points

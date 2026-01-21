@@ -2,19 +2,19 @@ from models import MarketDataPoint, Strategy
 from typing import List, Callable
 import timeit
 from memory_profiler import memory_usage
-from functools import partial
 
 def run_strategy(data: List[MarketDataPoint], strategy: Strategy) -> None:
     for tick in data:
         strategy.generate_signals(tick)
 
 
-def measure_time_timeit(
+def measure_time(
     data: List[MarketDataPoint],
     make_strategy: Callable[[], Strategy]
 ) -> float:
+    
     def _task():
-        strategy = make_strategy()   # fresh strategy each run
+        strategy = make_strategy()
         for tick in data:
             strategy.generate_signals(tick)
 
@@ -22,13 +22,13 @@ def measure_time_timeit(
     return t
 
 
-def measure_peak_memory_mb(
+def measure_peak_memory(
     data: List[MarketDataPoint],
     make_strategy: Callable[[], Strategy],
 ) -> float:
-    """Return peak memory (MB) during one full run."""
+
     def _task():
-        strategy = make_strategy()  # fresh strategy each run
+        strategy = make_strategy()
         for tick in data:
             strategy.generate_signals(tick)
 
